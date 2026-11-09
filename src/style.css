@@ -36,7 +36,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid #9bd17a; outline-
 
 .player-panel { position: relative; flex: 0 0 auto; padding: clamp(7px, 1.15dvh, 11px) 14px; overflow: hidden; border-radius: 18px; color: #f4f7f2; box-shadow: 0 8px 24px rgba(38,45,34,.1); }
 .player-panel::before { content: ''; position: absolute; width: 190px; height: 190px; right: -100px; top: -127px; border: 1px solid rgba(255,255,255,.085); border-radius: 50%; box-shadow: 0 0 0 18px rgba(255,255,255,.025), 0 0 0 38px rgba(255,255,255,.02); pointer-events: none; }
-.player-panel--north { background: linear-gradient(112deg, #183a2e 0%, #214b39 100%); }
+.player-panel--north { transform: rotate(180deg); background: linear-gradient(112deg, #183a2e 0%, #214b39 100%); }
 .player-panel--south { background: linear-gradient(112deg, #542e2d 0%, #703e34 100%); }
 .player-heading { position: relative; z-index: 1; min-height: 36px; display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: clamp(4px, .7dvh, 7px); }
 .player-title { min-width: 0; display: flex; align-items: center; gap: 7px; }
