@@ -67,6 +67,10 @@ button:focus-visible, input:focus-visible { outline: 3px solid #9bd17a; outline-
 .pot-icon { width: 23px; height: 23px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 7px; background: #f3f4e9; color: #a18345; }
 .pot-copy strong { color: #263c30; font-size: 16px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .pot-copy strong small { margin-left: 2px; color: #89948d; font-size: 9px; font-weight: 500; }
+.pot-actions { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+.sound-toggle { width: 28px; height: 28px; display: grid; place-items: center; flex: 0 0 auto; padding: 0; border: 1px solid #e7e9e2; border-radius: 9px; background: #fafbf8; color: #829087; cursor: pointer; }
+.sound-toggle:hover { border-color: #cbd9c6; background: #f2f7ed; color: #3d684a; }
+.sound-toggle.active { border-color: #d5e6c9; background: #f0f6e9; color: #4e7c52; }
 .reset-button { height: 29px; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 0 10px; border: 1px solid #e7e9e2; border-radius: 9px; background: #fafbf8; color: #637166; font-size: 10px; font-weight: 700; white-space: nowrap; cursor: pointer; }
 .reset-button:hover:not(:disabled) { border-color: #cbd9c6; background: #f2f7ed; color: #3d684a; }
 .reset-button:disabled { opacity: .45; cursor: not-allowed; }
@@ -138,6 +142,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid #9bd17a; outline-
   .scoreboard { padding: 5px 9px; border-radius: 15px; }
   .pot-line { min-height: 27px; padding-bottom: 3px; }
   .pot-icon { width: 20px; height: 20px; }
+  .sound-toggle { width: 25px; height: 25px; border-radius: 8px; }
   .reset-button { height: 25px; }
   .bet-summary { min-height: 25px; }
   .history-heading { min-height: 21px; }

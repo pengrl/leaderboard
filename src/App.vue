@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
-import { Check, Crown, History, RotateCcw, Sparkles, Trophy, X } from '@lucide/vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { Check, Crown, History, Music2, RotateCcw, Sparkles, Trophy, Volume2, VolumeX, X } from '@lucide/vue'
 
 type PlayerId = 'north' | 'south'
 type Player = { id: PlayerId; name: string; score: number; bet: number }
@@ -37,7 +37,12 @@ const scoreError = ref('')
 const renaming = ref<PlayerId | null>(null)
 const nameDraft = ref('')
 const toast = ref('')
+const musicEnabled = ref(false)
+const voiceEnabled = ref(true)
 let toastTimer: ReturnType<typeof setTimeout> | undefined
+let musicContext: AudioContext | null = null
+let musicMaster: GainNode | null = null
+let musicTimer: number | undefined
 
 const north = computed(() => game.value.players[0])
 const south = computed(() => game.value.players[1])
@@ -91,10 +96,144 @@ watch(game, (value) => {
   if (isStarted.value) localStorage.setItem(STORAGE_KEY, JSON.stringify(value))
 }, { deep: true })
 
+watch(voiceEnabled, (value) => localStorage.setItem('jin-hua-voice-enabled', String(value)))
+onMounted(() => {
+  voiceEnabled.value = localStorage.getItem('jin-hua-voice-enabled') !== 'false'
+})
+
+onBeforeUnmount(() => {
+  stopBackgroundMusic()
+  if ('speechSynthesis' in window) window.speechSynthesis.cancel()
+})
+
 function notify(message: string) {
   toast.value = message
   if (toastTimer) clearTimeout(toastTimer)
   toastTimer = setTimeout(() => (toast.value = ''), 2200)
+}
+
+const spokenPoints = ['', '一点', '两点', '三点', '四点', '五点', '六点', '七点', '八点', '九点', '十点']
+
+function speakBet(amount: number) {
+  if (!voiceEnabled.value || !('speechSynthesis' in window)) return
+  const utterance = new SpeechSynthesisUtterance(spokenPoints[amount])
+  utterance.lang = 'zh-CN'
+  utterance.rate = 1.02
+  utterance.pitch = 1
+  utterance.volume = 0.85
+  const chineseVoice = window.speechSynthesis.getVoices().find((voice) => voice.lang.toLowerCase().startsWith('zh'))
+  if (chineseVoice) utterance.voice = chineseVoice
+  window.speechSynthesis.cancel()
+  window.speechSynthesis.speak(utterance)
+}
+
+const musicPhrase = [293.66, 440, 369.99, 587.33, 493.88, 440, 329.63, 369.99]
+
+function playMusicNote(context: AudioContext, frequency: number, startAt: number, volume: number, length: number) {
+  if (!musicMaster) return
+  const filter = context.createBiquadFilter()
+  filter.type = 'lowpass'
+  filter.frequency.setValueAtTime(2100, startAt)
+  const envelope = context.createGain()
+  envelope.gain.setValueAtTime(0.0001, startAt)
+  envelope.gain.exponentialRampToValueAtTime(volume, startAt + 0.035)
+  envelope.gain.exponentialRampToValueAtTime(0.0001, startAt + length)
+  filter.connect(envelope)
+  envelope.connect(musicMaster)
+
+  const partials: Array<[number, OscillatorType, number]> = [
+    [frequency, 'triangle', 0.72],
+    [frequency * 2, 'sine', 0.2],
+    [frequency * 3, 'sine', 0.08],
+  ]
+  for (const [partialFrequency, type, level] of partials) {
+    const oscillator = context.createOscillator()
+    const partialGain = context.createGain()
+    oscillator.type = type
+    oscillator.frequency.setValueAtTime(partialFrequency, startAt)
+    partialGain.gain.setValueAtTime(level, startAt)
+    oscillator.connect(partialGain)
+    partialGain.connect(filter)
+    oscillator.start(startAt)
+    oscillator.stop(startAt + length + 0.03)
+  }
+}
+
+function playMusicBass(context: AudioContext, frequency: number, startAt: number) {
+  if (!musicMaster) return
+  const oscillator = context.createOscillator()
+  const envelope = context.createGain()
+  oscillator.type = 'sine'
+  oscillator.frequency.setValueAtTime(frequency, startAt)
+  envelope.gain.setValueAtTime(0.0001, startAt)
+  envelope.gain.exponentialRampToValueAtTime(0.018, startAt + 0.22)
+  envelope.gain.exponentialRampToValueAtTime(0.0001, startAt + 2.8)
+  oscillator.connect(envelope)
+  envelope.connect(musicMaster)
+  oscillator.start(startAt)
+  oscillator.stop(startAt + 2.85)
+}
+
+async function startBackgroundMusic() {
+  if (musicContext) return
+  let context: AudioContext | null = null
+  try {
+    context = new AudioContext()
+    musicContext = context
+    const master = context.createGain()
+    const delay = context.createDelay()
+    const feedback = context.createGain()
+    const wet = context.createGain()
+    master.gain.setValueAtTime(0.38, context.currentTime)
+    delay.delayTime.setValueAtTime(0.32, context.currentTime)
+    feedback.gain.setValueAtTime(0.16, context.currentTime)
+    wet.gain.setValueAtTime(0.16, context.currentTime)
+    master.connect(context.destination)
+    master.connect(delay)
+    delay.connect(wet)
+    wet.connect(context.destination)
+    delay.connect(feedback)
+    feedback.connect(delay)
+    musicMaster = master
+    musicEnabled.value = true
+    await context.resume()
+    if (musicContext !== context) return
+    let noteIndex = 0
+    const playNextNote = () => {
+      if (!musicContext) return
+      const now = musicContext.currentTime + 0.06
+      playMusicNote(musicContext, musicPhrase[noteIndex % musicPhrase.length], now, 0.07, 1.62)
+      if (noteIndex % 4 === 0) playMusicBass(musicContext, noteIndex % 8 === 0 ? 146.83 : 110, now)
+      noteIndex += 1
+    }
+    playNextNote()
+    musicTimer = window.setInterval(playNextNote, 1420)
+  } catch {
+    if (context && musicContext !== context) return
+    if (context) stopBackgroundMusic()
+    else musicEnabled.value = false
+    notify('当前浏览器无法播放背景乐')
+  }
+}
+
+function stopBackgroundMusic() {
+  if (musicTimer !== undefined) window.clearInterval(musicTimer)
+  musicTimer = undefined
+  const oldContext = musicContext
+  musicContext = null
+  musicMaster = null
+  musicEnabled.value = false
+  if (oldContext && oldContext.state !== 'closed') void oldContext.close()
+}
+
+function toggleBackgroundMusic() {
+  if (musicEnabled.value) stopBackgroundMusic()
+  else void startBackgroundMusic()
+}
+
+function toggleVoice() {
+  voiceEnabled.value = !voiceEnabled.value
+  if (!voiceEnabled.value && 'speechSynthesis' in window) window.speechSynthesis.cancel()
 }
 
 function addBet(playerId: PlayerId, amount: number) {
@@ -105,6 +244,7 @@ function addBet(playerId: PlayerId, amount: number) {
   }
   player.score -= amount
   player.bet += amount
+  speakBet(amount)
 }
 
 function postAnte(player: Player) {
@@ -215,7 +355,7 @@ function formatNumber(value: number) {
           v-for="amount in chipValues"
           :key="`north-${amount}`"
           class="chip-button"
-          :disabled="north.bet + amount > north.score"
+          :disabled="amount > north.score"
           @click="addBet('north', amount)"
         >{{ amount }}<small>点</small></button>
       </div>
@@ -227,7 +367,11 @@ function formatNumber(value: number) {
     <section class="scoreboard" aria-label="下注情况和对局记录">
       <div class="pot-line">
         <div class="pot-copy"><span class="pot-icon"><Sparkles :size="15" /></span><span>总下注</span><strong>{{ formatNumber(currentPot) }}<small>点</small></strong></div>
-        <button class="reset-button" :disabled="!isStarted" @click="openReset"><RotateCcw :size="14" /> 重置</button>
+        <div class="pot-actions">
+          <button class="sound-toggle" :class="{ active: musicEnabled }" @click="toggleBackgroundMusic" :aria-label="musicEnabled ? '关闭背景音乐' : '播放背景音乐'" :title="musicEnabled ? '关闭背景音乐' : '播放背景音乐'"><Music2 :size="15" /></button>
+          <button class="sound-toggle" :class="{ active: voiceEnabled }" @click="toggleVoice" :aria-label="voiceEnabled ? '关闭下注语音' : '打开下注语音'" :title="voiceEnabled ? '关闭下注语音' : '打开下注语音'"><Volume2 v-if="voiceEnabled" :size="15" /><VolumeX v-else :size="15" /></button>
+          <button class="reset-button" :disabled="!isStarted" @click="openReset"><RotateCcw :size="14" /> 重置</button>
+        </div>
       </div>
 
       <div class="bet-summary" aria-label="双方本局下注">
@@ -270,7 +414,7 @@ function formatNumber(value: number) {
           v-for="amount in chipValues"
           :key="`south-${amount}`"
           class="chip-button"
-          :disabled="south.bet + amount > south.score"
+          :disabled="amount > south.score"
           @click="addBet('south', amount)"
         >{{ amount }}<small>点</small></button>
       </div>
