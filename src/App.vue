@@ -127,24 +127,28 @@ function speakBet(amount: number) {
   window.speechSynthesis.speak(utterance)
 }
 
-const musicPhrase = [293.66, 440, 369.99, 587.33, 493.88, 440, 329.63, 369.99]
+const musicPhrases = [
+  [587.33, 659.25, 739.99, 659.25, 493.88, 587.33, 659.25, null, 587.33, 659.25, 880, 739.99, 659.25, 587.33, 493.88, null],
+  [659.25, 739.99, 880, 739.99, 587.33, 659.25, 739.99, 880, 987.77, 880, 739.99, 659.25, 587.33, 493.88, 587.33, null],
+]
+const bassPhrase = [146.83, 146.83, 220, 220, 123.47, 123.47, 185, 185, 110, 110, 164.81, 164.81, 123.47, 123.47, 185, 185]
 
-function playMusicNote(context: AudioContext, frequency: number, startAt: number, volume: number, length: number) {
-  if (!musicMaster) return
+function playMusicNote(context: AudioContext, frequency: number, startAt: number, volume: number, length: number, destination = musicMaster) {
+  if (!destination) return
   const filter = context.createBiquadFilter()
   filter.type = 'lowpass'
-  filter.frequency.setValueAtTime(2100, startAt)
+  filter.frequency.setValueAtTime(2600, startAt)
   const envelope = context.createGain()
   envelope.gain.setValueAtTime(0.0001, startAt)
-  envelope.gain.exponentialRampToValueAtTime(volume, startAt + 0.035)
+  envelope.gain.exponentialRampToValueAtTime(volume, startAt + 0.018)
   envelope.gain.exponentialRampToValueAtTime(0.0001, startAt + length)
   filter.connect(envelope)
-  envelope.connect(musicMaster)
+  envelope.connect(destination)
 
   const partials: Array<[number, OscillatorType, number]> = [
-    [frequency, 'triangle', 0.72],
-    [frequency * 2, 'sine', 0.2],
-    [frequency * 3, 'sine', 0.08],
+    [frequency, 'triangle', 0.68],
+    [frequency * 2, 'sine', 0.25],
+    [frequency * 3, 'sine', 0.07],
   ]
   for (const [partialFrequency, type, level] of partials) {
     const oscillator = context.createOscillator()
@@ -159,19 +163,84 @@ function playMusicNote(context: AudioContext, frequency: number, startAt: number
   }
 }
 
-function playMusicBass(context: AudioContext, frequency: number, startAt: number) {
-  if (!musicMaster) return
+function playMusicBass(context: AudioContext, frequency: number, startAt: number, destination = musicMaster) {
+  if (!destination) return
   const oscillator = context.createOscillator()
   const envelope = context.createGain()
   oscillator.type = 'sine'
   oscillator.frequency.setValueAtTime(frequency, startAt)
   envelope.gain.setValueAtTime(0.0001, startAt)
-  envelope.gain.exponentialRampToValueAtTime(0.018, startAt + 0.22)
-  envelope.gain.exponentialRampToValueAtTime(0.0001, startAt + 2.8)
+  envelope.gain.exponentialRampToValueAtTime(0.045, startAt + 0.035)
+  envelope.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.38)
   oscillator.connect(envelope)
-  envelope.connect(musicMaster)
+  envelope.connect(destination)
   oscillator.start(startAt)
-  oscillator.stop(startAt + 2.85)
+  oscillator.stop(startAt + 0.42)
+}
+
+function playMusicClick(context: AudioContext, startAt: number, destination: AudioNode, volume: number) {
+  const sampleCount = Math.floor(context.sampleRate * 0.055)
+  const buffer = context.createBuffer(1, sampleCount, context.sampleRate)
+  const samples = buffer.getChannelData(0)
+  for (let i = 0; i < sampleCount; i += 1) samples[i] = Math.random() * 2 - 1
+  const source = context.createBufferSource()
+  const filter = context.createBiquadFilter()
+  const envelope = context.createGain()
+  source.buffer = buffer
+  filter.type = 'highpass'
+  filter.frequency.setValueAtTime(4300, startAt)
+  envelope.gain.setValueAtTime(volume, startAt)
+  envelope.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.055)
+  source.connect(filter)
+  filter.connect(envelope)
+  envelope.connect(destination)
+  source.start(startAt)
+}
+
+function announceVictory(winnerId: PlayerId) {
+  const phrase = winnerId === 'north' ? '上家胜利' : '下家胜利'
+  if (voiceEnabled.value && 'speechSynthesis' in window) {
+    const utterance = new SpeechSynthesisUtterance(phrase)
+    utterance.lang = 'zh-CN'
+    utterance.rate = 0.92
+    utterance.pitch = 1.12
+    utterance.volume = 1
+    const chineseVoice = window.speechSynthesis.getVoices().find((voice) => voice.lang.toLowerCase().startsWith('zh'))
+    if (chineseVoice) utterance.voice = chineseVoice
+    window.speechSynthesis.cancel()
+    window.speechSynthesis.speak(utterance)
+  }
+
+  let context = musicContext
+  let destination: GainNode | null = musicMaster
+  if (!context || !destination) {
+    try {
+      context = new AudioContext()
+      const master = context.createGain()
+      master.gain.setValueAtTime(0.42, context.currentTime)
+      master.connect(context.destination)
+      destination = master
+      void context.resume()
+      window.setTimeout(() => {
+        if (context && context.state !== 'closed') void context.close()
+      }, 2600)
+    } catch {
+      return
+    }
+  }
+
+  const now = context.currentTime + 0.04
+  const fanfare = winnerId === 'north'
+    ? [587.33, 739.99, 880, 1174.66]
+    : [493.88, 659.25, 783.99, 987.77]
+  fanfare.forEach((frequency, index) => {
+    const at = now + index * 0.16
+    playMusicNote(context!, frequency, at, index === fanfare.length - 1 ? 0.14 : 0.09, 0.48, destination)
+    if (index === fanfare.length - 1) {
+      playMusicNote(context!, frequency / 2, at, 0.075, 0.75, destination)
+      playMusicNote(context!, frequency * 1.25, at, 0.055, 0.72, destination)
+    }
+  })
 }
 
 async function startBackgroundMusic() {
@@ -184,10 +253,10 @@ async function startBackgroundMusic() {
     const delay = context.createDelay()
     const feedback = context.createGain()
     const wet = context.createGain()
-    master.gain.setValueAtTime(0.38, context.currentTime)
-    delay.delayTime.setValueAtTime(0.32, context.currentTime)
-    feedback.gain.setValueAtTime(0.16, context.currentTime)
-    wet.gain.setValueAtTime(0.16, context.currentTime)
+    master.gain.setValueAtTime(0.3, context.currentTime)
+    delay.delayTime.setValueAtTime(0.24, context.currentTime)
+    feedback.gain.setValueAtTime(0.13, context.currentTime)
+    wet.gain.setValueAtTime(0.12, context.currentTime)
     master.connect(context.destination)
     master.connect(delay)
     delay.connect(wet)
@@ -198,16 +267,27 @@ async function startBackgroundMusic() {
     musicEnabled.value = true
     await context.resume()
     if (musicContext !== context) return
-    let noteIndex = 0
+    let stepIndex = 0
     const playNextNote = () => {
       if (!musicContext) return
-      const now = musicContext.currentTime + 0.06
-      playMusicNote(musicContext, musicPhrase[noteIndex % musicPhrase.length], now, 0.07, 1.62)
-      if (noteIndex % 4 === 0) playMusicBass(musicContext, noteIndex % 8 === 0 ? 146.83 : 110, now)
-      noteIndex += 1
+      const context = musicContext
+      const step = stepIndex % 32
+      const phrase = musicPhrases[Math.floor(step / 16)]
+      const beat = step % 16
+      const now = context.currentTime + 0.045
+      const melodyNote = phrase[beat]
+      if (melodyNote) {
+        const accent = beat % 4 === 0 ? 0.095 : 0.068
+        playMusicNote(context, melodyNote, now, accent, 0.34)
+        if (beat % 4 === 2) playMusicNote(context, melodyNote * 0.75, now, 0.026, 0.31)
+      }
+      if (beat % 2 === 0) playMusicBass(context, bassPhrase[beat], now)
+      if (beat % 4 === 0) playMusicClick(context, now, musicMaster!, 0.022)
+      else if (beat % 4 === 2) playMusicClick(context, now, musicMaster!, 0.009)
+      stepIndex += 1
     }
     playNextNote()
-    musicTimer = window.setInterval(playNextNote, 1420)
+    musicTimer = window.setInterval(playNextNote, 260)
   } catch {
     if (context && musicContext !== context) return
     if (context) stopBackgroundMusic()
@@ -278,6 +358,7 @@ function settle(winnerId: PlayerId) {
   postAnte(north.value)
   postAnte(south.value)
   notify(transfer > 0 ? `${winner.name} 赢下 ${transfer} 点` : `${winner.name} 获胜，本局未产生转分`)
+  announceVictory(winnerId)
 }
 
 function beginRename(player: Player) {
