@@ -253,7 +253,7 @@ async function startBackgroundMusic() {
     const delay = context.createDelay()
     const feedback = context.createGain()
     const wet = context.createGain()
-    master.gain.setValueAtTime(0.3, context.currentTime)
+    master.gain.setValueAtTime(0.68, context.currentTime)
     delay.delayTime.setValueAtTime(0.24, context.currentTime)
     feedback.gain.setValueAtTime(0.13, context.currentTime)
     wet.gain.setValueAtTime(0.12, context.currentTime)
